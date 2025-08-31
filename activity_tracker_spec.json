@@ -1,0 +1,280 @@
+{
+  "project": {
+    "name": "activity-tracker-mvp",
+    "description": "Streamlit web app for real-time and historical activity logging",
+    "tech_stack": {
+      "frontend": "streamlit",
+      "backend": "supabase",
+      "location": "streamlit-geolocation + manual fallback",
+      "storage": "supabase-storage"
+    }
+  },
+  
+  "database": {
+    "provider": "supabase",
+    "tables": {
+      "activities": {
+        "columns": {
+          "id": "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "created_at": "TIMESTAMPTZ DEFAULT NOW()",
+          "timestamp": "TIMESTAMPTZ NOT NULL",
+          "type": "TEXT CHECK (type IN (live, historical))",
+          "location": "JSONB",
+          "perception_score": "INTEGER CHECK (perception_score BETWEEN -5 AND 5)",
+          "tags": "TEXT[]",
+          "description": "TEXT",
+          "timer_duration": "INTEGER",
+          "media_urls": "TEXT[]"
+        },
+        "rls": true
+      }
+    },
+    "storage": {
+      "buckets": ["activity-media"],
+      "public_access": true
+    }
+  },
+
+  "file_structure": {
+    "app.py": "Main Streamlit entry point with navigation",
+    ".env": "Environment variables for Supabase",
+    "requirements.txt": "Python dependencies",
+    "pages/1_Dashboard.py": "Main dashboard with recent activities and stats",
+    "pages/2_Live_Update.py": "Real-time activity logging with timer",
+    "pages/3_Historical.py": "Historical activity entry with date/time picker",
+    "utils/supabase_client.py": "Supabase connection and client setup",
+    "utils/data_handler.py": "CRUD operations for activities",
+    "utils/location.py": "GPS + manual location capture",
+    "utils/auth.py": "Simple session-based authentication"
+  },
+
+  "pages": {
+    "app.py": {
+      "components": ["title", "sidebar_navigation", "authentication_check"],
+      "navigation": ["Dashboard", "Live Update", "Historical Entry"],
+      "authentication": {
+        "method": "session_state",
+        "credentials": {"username": "admin", "password": "password"}
+      }
+    },
+
+    "1_Dashboard.py": {
+      "sections": [
+        {
+          "name": "welcome_header",
+          "components": ["title", "user_greeting", "navigation_buttons"]
+        },
+        {
+          "name": "recent_activities",
+          "components": ["activities_table"],
+          "data_source": "get_recent_activities(limit=10)",
+          "columns": ["timestamp", "type", "location", "perception_score", "description"]
+        },
+        {
+          "name": "quick_stats",
+          "components": ["metrics"],
+          "metrics": ["total_activities_today", "avg_perception_score", "total_activities_all_time"]
+        }
+      ]
+    },
+
+    "2_Live_Update.py": {
+      "sections": [
+        {
+          "name": "timer_section",
+          "components": ["start_button", "stop_button", "elapsed_time_display"],
+          "session_state": ["timer_start", "timer_running"],
+          "real_time_update": true
+        },
+        {
+          "name": "activity_form",
+          "show_when": "timer stopped",
+          "components": [
+            {
+              "name": "location_input",
+              "type": "hybrid",
+              "gps_component": "streamlit_geolocation",
+              "manual_fallback": "text_input"
+            },
+            {
+              "name": "media_upload",
+              "type": "file_uploader",
+              "multiple": true,
+              "accepted_types": [".jpg", ".jpeg", ".png", ".mp4", ".mov"]
+            },
+            {
+              "name": "perception_score",
+              "type": "slider",
+              "range": [-5, 5],
+              "labels": {"−5": "Very Negative", "0": "Neutral", "5": "Very Positive"}
+            },
+            {
+              "name": "tags",
+              "type": "text_input",
+              "placeholder": "work, meeting, productive (comma-separated)"
+            },
+            {
+              "name": "description",
+              "type": "text_area",
+              "placeholder": "Describe your activity..."
+            }
+          ],
+          "submit_button": "Log Activity"
+        }
+      ]
+    },
+
+    "3_Historical.py": {
+      "sections": [
+        {
+          "name": "datetime_selection",
+          "components": ["date_input", "time_input"],
+          "default_date": "today",
+          "default_time": "current_time"
+        },
+        {
+          "name": "activity_form",
+          "components": [
+            "location_input",
+            "media_upload", 
+            "perception_score",
+            "tags",
+            "description"
+          ],
+          "note": "Same as Live Update but without timer, timer_duration = null"
+        }
+      ]
+    }
+  },
+
+  "utils": {
+    "supabase_client.py": {
+      "functions": [
+        "get_supabase_client()",
+        "test_connection()"
+      ],
+      "cache": "st.cache_resource",
+      "env_vars": ["SUPABASE_URL", "SUPABASE_ANON_KEY"]
+    },
+
+    "data_handler.py": {
+      "class": "SupabaseHandler",
+      "methods": [
+        {
+          "name": "add_activity",
+          "params": ["activity_data"],
+          "returns": "activity_id",
+          "table": "activities"
+        },
+        {
+          "name": "get_recent_activities", 
+          "params": ["limit"],
+          "returns": "list of activities",
+          "order_by": "created_at DESC"
+        },
+        {
+          "name": "upload_media_file",
+          "params": ["file_bytes", "filename", "file_type"],
+          "returns": "public_url",
+          "bucket": "activity-media",
+          "path_structure": "{file_type}s/{date}/{filename}"
+        },
+        {
+          "name": "get_activity_stats",
+          "returns": {"total_today": "int", "avg_perception": "float", "total_all_time": "int"}
+        }
+      ]
+    },
+
+    "location.py": {
+      "function": "location_handler",
+      "returns": {"lat": "float|null", "lng": "float|null", "description": "string"},
+      "components": [
+        {
+          "name": "gps_button",
+          "action": "trigger streamlit_geolocation",
+          "success_action": "store in session_state"
+        },
+        {
+          "name": "manual_input",
+          "type": "text_input",
+          "placeholder": "Home, Office, Central Park..."
+        }
+      ],
+      "priority": "GPS if available, else manual, else Not specified"
+    },
+
+    "auth.py": {
+      "function": "check_authentication",
+      "session_key": "authenticated",
+      "login_form": {
+        "username_field": "text_input",
+        "password_field": "text_input with type=password",
+        "submit_button": "Login"
+      },
+      "credentials": {"admin": "password"},
+      "redirect": "st.rerun() after successful login"
+    }
+  },
+
+  "data_flow": {
+    "live_activity": [
+      "start_timer → store start_time in session_state",
+      "user_performs_activity",
+      "stop_timer → calculate duration",
+      "fill_form → capture location, media, perception, tags, description", 
+      "upload_media → get URLs",
+      "save_to_database → activity record with type=live",
+      "show_success_message"
+    ],
+    "historical_activity": [
+      "select_past_datetime",
+      "fill_form → same as live but no timer",
+      "upload_media → get URLs", 
+      "save_to_database → activity record with type=historical, timer_duration=null",
+      "show_success_message"
+    ]
+  },
+
+  "environment": {
+    "requirements.txt": [
+      "streamlit",
+      "supabase", 
+      "python-dotenv",
+      "streamlit-geolocation",
+      "pillow"
+    ],
+    ".env_template": {
+      "SUPABASE_URL": "your_supabase_project_url",
+      "SUPABASE_ANON_KEY": "your_supabase_anon_key"
+    }
+  },
+
+  "ui_specifications": {
+    "theme": "streamlit_default",
+    "layout": "wide for forms, centered for dashboard",
+    "feedback": {
+      "success_messages": "st.success() for completed actions",
+      "error_handling": "st.error() with user-friendly messages",
+      "loading_states": "st.spinner() for uploads and API calls"
+    },
+    "validation": {
+      "required_fields": ["perception_score", "description"],
+      "perception_score_range": [-5, 5],
+      "tags_processing": "strip whitespace, remove empty strings",
+      "file_size_limit": "10MB per file"
+    }
+  },
+
+  "success_criteria": [
+    "User can authenticate and access dashboard",
+    "Timer works with real-time updates in Live Update page",
+    "Location capture works with GPS + manual fallback", 
+    "Files upload successfully to Supabase storage",
+    "Activities save to database with all fields",
+    "Dashboard shows recent activities and statistics",
+    "Historical entries work with date/time selection",
+    "Error handling provides clear user feedback",
+    "App is deployable and production-ready"
+  ]
+}
